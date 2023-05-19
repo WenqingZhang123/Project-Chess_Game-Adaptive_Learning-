@@ -2,39 +2,36 @@ import os
 import torch
 import torch.nn as nn
 import torch.optim as optim
-import numpy as np
-import matplotlib.pyplot as plt
-from degree_freedom_queen import *
-from degree_freedom_king1 import *
-from degree_freedom_king2 import *
-from generate_game import *
 from Chess_env import *
-
 
 class QNetwork(nn.Module):
     def __init__(self, state_size, action_size, hidden_size=200):
         super(QNetwork, self).__init__()
         self.fc1 = nn.Linear(state_size, hidden_size)
-        self.fc2 = nn.Linear(hidden_size, action_size)
+        self.fc2 = nn.Linear(hidden_size, hidden_size)
+        self.fc3 = nn.Linear(hidden_size, action_size)
 
     def forward(self, state):
         x = torch.relu(self.fc1(state))
-        return self.fc2(x)
-
+        x = torch.relu(self.fc2(x))
+        return self.fc3(x)
 
 class Agent:
-    def __init__(self, state_size, action_size, hidden_size=200, lr=0.0035, gamma=0.85, epsilon=0.2, beta=0.00005):
+    def __init__(self, state_size, action_size, hidden_size=200, lr=0.0035, gamma=0.85, epsilon=0.2, beta=0.00005,
+                 lr_decay_start=0.3):
         self.state_size = state_size
         self.action_size = action_size
         self.network = QNetwork(state_size, action_size, hidden_size)
-        self.optimizer = optim.Adam(self.network.parameters(), lr=lr)
+        self.initial_lr = lr  # 记录初始学习率
+        self.lr = lr  # 当前学习率
+        self.optimizer = optim.Adam(self.network.parameters(), lr=self.lr)  # 使用当前学习率初始化优化器
         self.gamma = gamma
         self.epsilon = epsilon
         self.epsilon_0 = epsilon  # 设置 epsilon 的初始值
         self.beta = beta
+        self.lr_decay_start = lr_decay_start  # 学习率衰减开始的比例（例如，0.3表示训练的30%之后开始衰减）
         self.rewards = []
         self.steps = []
-
 
     def select_action(self, state, allowed_actions, testing=False):
         if not testing and np.random.rand() < self.epsilon:
@@ -45,8 +42,6 @@ class Agent:
             q_values = q_values.numpy()
             q_values[allowed_actions.flatten() == 0] = -np.inf
             return np.argmax(q_values)
-
-
 
     def update(self, state, action, reward, next_state, done, allowed_actions_next):
         self.optimizer.zero_grad()
@@ -100,7 +95,8 @@ with open(fight_filename, "w") as fight_file:
     fight_file.write('check? ' + str(env.check) + "\n")
     fight_file.write('dofk2 ' + str(np.sum(env.dfk2_constrain).astype(int)) + "\n")
 
-    for i in range(100):  # 你可以根据需要调整此数字
+    # Simulate a game
+    for i in range(100):  # 100 steps max
         state = torch.from_numpy(X).float()
         action = agent.select_action(state, allowed_a, testing=True)
         S, X, allowed_a, R, Done = env.OneStep(action)
